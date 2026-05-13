@@ -36,7 +36,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # cross 工具负责交叉编译，内部用 Docker 封装了各平台的 musl 工具链
       - name: Install cross
         uses: taiki-e/install-action@v2
         with:
@@ -54,16 +53,12 @@ jobs:
             ${{ runner.os }}-cargo-${{ matrix.target }}-
 
       - name: Build
-        env:
-          # 将版本号注入到编译时常量（通过 RUSTFLAGS 传递环境变量供 build.rs 或 config.rs 使用）
-          # 也可以直接在 Cargo.toml 里用 env! 宏读取
-          RELEASE_VERSION: ${{ github.event.inputs.tag }}
+        # reqwest 已切换为 rustls-tls，无需系统 OpenSSL，交叉编译直接成功
         run: |
           cross build \
             --release \
             --target ${{ matrix.target }}
 
-          # 重命名产物
           cp target/${{ matrix.target }}/release/iptv-speed-tester ${{ matrix.artifact }}
           chmod +x ${{ matrix.artifact }}
 
@@ -74,7 +69,7 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 1
 
-  # ── 2. 构建多架构 Docker 镜像（复用上一步的二进制，不在 Docker 内编译）──
+  # ── 2. 构建多架构 Docker 镜像 ────────────────────────────────────
   docker:
     name: Docker (multi-arch)
     needs: build
@@ -124,7 +119,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── 3. 创建 GitHub Release 并上传三个二进制 ──────────────────────
+  # ── 3. 创建 GitHub Release ───────────────────────────────────────
   release:
     name: Release
     needs: [build, docker]
