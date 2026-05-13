@@ -53,12 +53,8 @@ jobs:
             ${{ runner.os }}-cargo-${{ matrix.target }}-
 
       - name: Build
-        # reqwest 已切换为 rustls-tls，无需系统 OpenSSL，交叉编译直接成功
         run: |
-          cross build \
-            --release \
-            --target ${{ matrix.target }}
-
+          cross build --release --target ${{ matrix.target }}
           cp target/${{ matrix.target }}/release/iptv-speed-tester ${{ matrix.artifact }}
           chmod +x ${{ matrix.artifact }}
 
@@ -69,7 +65,7 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 1
 
-  # ── 2. 构建多架构 Docker 镜像 ────────────────────────────────────
+  # ── 2. 下载已构建好的二进制，组装多架构 Docker 镜像 ──────────────
   docker:
     name: Docker (multi-arch)
     needs: build
@@ -79,20 +75,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all linux binaries
+      # 下载 build job 产出的三个二进制，放入 docker-bin/
+      - name: Download linux binaries
         uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: docker-bin
           merge-multiple: true
           pattern: iptv-linux-*
 
-      - name: Prepare binaries for Docker
-        run: |
-          mkdir -p docker-bin
-          cp dist/iptv-linux-amd64 docker-bin/iptv-linux-amd64
-          cp dist/iptv-linux-arm64 docker-bin/iptv-linux-arm64
-          cp dist/iptv-linux-armv7 docker-bin/iptv-linux-armv7
-          chmod +x docker-bin/*
+      - name: Mark binaries executable
+        run: chmod +x docker-bin/*
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -106,6 +98,8 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # 使用 Dockerfile.prebuilt：直接把 docker-bin/ 里对应平台的二进制
+      # 复制进 alpine 镜像，完全不在 Docker 内重新编译 Rust
       - name: Build and push multi-arch image
         uses: docker/build-push-action@v6
         with:
@@ -119,10 +113,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── 3. 创建 GitHub Release ───────────────────────────────────────
+  # ── 3. 创建 GitHub Release，上传三个平台二进制 ───────────────────
   release:
     name: Release
-    needs: [build, docker]
+    needs: [build]
     runs-on: ubuntu-latest
 
     steps:
