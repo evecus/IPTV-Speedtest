@@ -1,4 +1,4 @@
-# IPTV Speed Tester（Rust 版）
+# IPTV Speed Tester
 
 自动聚合、测速、过滤 IPTV 源，输出可直接导入播放器的 M3U8 / TXT 播放列表。
 
