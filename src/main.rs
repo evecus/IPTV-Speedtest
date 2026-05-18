@@ -7,10 +7,14 @@ mod subscribe;
 mod task;
 mod types;
 
-use crate::config::{DEFAULT_SUB_URL, VERSION};
+use crate::config::{CACHE_M3U8, CACHE_TXT, DEFAULT_SUB_URL, VERSION};
 use crate::output::read_cache;
 use axum::{routing::get, Router};
+use chrono_tz::Tz;
 use clap::Parser;
+use cron::Schedule;
+use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -31,9 +35,13 @@ struct Cli {
     #[arg(long = "top", env = "TOP", default_value_t = 5)]
     top_n: usize,
 
-    /// 更新间隔，例如 6h / 30m / 3600s
-    #[arg(long, env = "INTERVAL", default_value = "6h")]
-    interval: String,
+    /// Cron 表达式（5字段: 分 时 日 月 周），例如 "23 3 * * *"
+    #[arg(long, env = "CRON", default_value = "23 3 * * *")]
+    cron: String,
+
+    /// 时区，例如 Asia/Shanghai、UTC、America/New_York
+    #[arg(long, env = "TZ", default_value = "Asia/Shanghai")]
+    timezone: String,
 
     #[arg(long = "url1",  env = "URL1")]  url1:  Option<String>,
     #[arg(long = "url2",  env = "URL2")]  url2:  Option<String>,
@@ -66,7 +74,6 @@ impl Cli {
             &self.url16, &self.url17, &self.url18, &self.url19, &self.url20,
         ];
         let mut urls: Vec<String> = opts.iter().filter_map(|o| o.as_deref().map(str::to_string)).collect();
-        // 内置默认订阅（失败时自动跳过）
         urls.push(DEFAULT_SUB_URL.to_string());
         urls
     }
@@ -92,54 +99,103 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() {
-    // 设置时区（Linux 环境下生效）
-    unsafe { std::env::set_var("TZ", "Asia/Shanghai") };
-
     let cli = Cli::parse();
     let urls = cli.collect_urls();
 
+    // 解析时区
+    let tz: Tz = cli.timezone.parse().unwrap_or_else(|_| {
+        eprintln!("[warn] unknown timezone '{}', falling back to Asia/Shanghai", cli.timezone);
+        "Asia/Shanghai".parse().unwrap()
+    });
+
+    // 解析 cron 表达式（cron crate 需要 6 字段，前置 "0 " 补秒位）
+    let cron_expr = format!("0 {}", cli.cron.trim());
+    let schedule = Schedule::from_str(&cron_expr).unwrap_or_else(|e| {
+        eprintln!("[error] invalid cron expression '{}': {}", cli.cron, e);
+        std::process::exit(1);
+    });
+
     println!(
-        "IPTV Aggregator v{}  port={}  workers={}  top={}  interval={}",
-        VERSION, cli.port, cli.workers, cli.top_n, cli.interval
+        "IPTV Aggregator v{}  port={}  workers={}  top={}  cron=\"{}\"  tz={}",
+        VERSION, cli.port, cli.workers, cli.top_n, cli.cron, tz
     );
     println!("Subscribe URLs ({}):", urls.len());
     for (i, u) in urls.iter().enumerate() {
         println!("  {}. {}", i + 1, u);
     }
 
-    // 先恢复缓存，让 HTTP 服务立刻可用
+    // 检查是否存在上次测速结果
+    let cache_exists =
+        Path::new(CACHE_M3U8).exists() && Path::new(CACHE_TXT).exists();
+
+    // 恢复缓存，让 HTTP 服务立刻可用
     let (m3u8, txt) = read_cache();
+
+    // 确定 last_run 初始值
+    let last_run_init = if cache_exists {
+        get_file_mtime(CACHE_M3U8)
+            .unwrap_or_else(|| "cached (unknown time)".to_string())
+    } else {
+        "Never".to_string()
+    };
+
     let state = Arc::new(AppState {
         data: RwLock::new(SharedData {
             m3u8,
             txt,
-            last_run: "Never".to_string(),
+            last_run: last_run_init,
         }),
         workers: cli.workers,
         top_n: cli.top_n,
         urls: urls.clone(),
     });
 
-    // 首次立即执行任务
-    {
+    if cache_exists {
+        println!(
+            "[main] cache files found ({} + {}), skipping startup speed-test — waiting for cron.",
+            CACHE_M3U8, CACHE_TXT
+        );
+    } else {
+        println!("[main] no cache found, running initial speed-test immediately.");
         let st = state.clone();
         let us = urls.clone();
         let (w, t) = (cli.workers, cli.top_n);
         tokio::spawn(async move { task::run_task(st, w, t, us).await });
     }
 
-    // 定时任务循环
+    // ── Cron 调度循环 ─────────────────────────────────────────────
     {
-        let secs = parse_interval(&cli.interval);
-        println!("[cron] scheduled every {}s", secs);
         let st = state.clone();
         let us = urls.clone();
         let (w, t) = (cli.workers, cli.top_n);
+
         tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(secs));
-            ticker.tick().await; // 跳过第一次（已手动执行）
             loop {
-                ticker.tick().await;
+                // 以指定时区的当前时间为基准求下一触发点
+                let now_utc = chrono::Utc::now();
+                let now_tz = now_utc.with_timezone(&tz);
+
+                let next_opt = schedule.after(&now_tz).next();
+                let Some(next_time) = next_opt else {
+                    eprintln!("[cron] schedule exhausted, stopping.");
+                    break;
+                };
+
+                // 转回 UTC 计算等待秒数
+                let next_utc = next_time.with_timezone(&chrono::Utc);
+                let wait_secs = (next_utc - now_utc).num_seconds().max(0) as u64;
+
+                println!(
+                    "[cron] next run at {} ({}) — sleeping {}s ({:.1}h)",
+                    next_time.format("%Y-%m-%d %H:%M:%S %Z"),
+                    tz,
+                    wait_secs,
+                    wait_secs as f64 / 3600.0
+                );
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
+
+                println!("[cron] triggered — starting speed-test...");
                 let st2 = st.clone();
                 let us2 = us.clone();
                 tokio::spawn(task::run_task(st2, w, t, us2));
@@ -147,7 +203,7 @@ async fn main() {
         });
     }
 
-    // HTTP 路由
+    // ── HTTP 路由 ─────────────────────────────────────────────────
     let app = Router::new()
         .route("/",        get(server::handle_m3u8))
         .route("/iptv",    get(server::handle_m3u8))
@@ -162,10 +218,13 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-/// 解析时间字符串 → 秒数（"6h" → 21600，"30m" → 1800，"3600" → 3600）
-fn parse_interval(s: &str) -> u64 {
-    if let Some(n) = s.strip_suffix('h') { return n.parse::<u64>().unwrap_or(6) * 3600; }
-    if let Some(n) = s.strip_suffix('m') { return n.parse::<u64>().unwrap_or(360) * 60;  }
-    if let Some(n) = s.strip_suffix('s') { return n.parse::<u64>().unwrap_or(21600);      }
-    s.parse::<u64>().unwrap_or(6 * 3600)
+/// 读取文件最后修改时间，格式化为本地时间字符串
+fn get_file_mtime(path: &str) -> Option<String> {
+    use std::time::UNIX_EPOCH;
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta.modified().ok()?;
+    let secs = mtime.duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0)?;
+    let local = dt.with_timezone(&chrono::Local);
+    Some(local.format("%Y-%m-%d %H:%M:%S").to_string())
 }
