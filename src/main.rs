@@ -43,37 +43,76 @@ struct Cli {
     #[arg(long, env = "TZ", default_value = "Asia/Shanghai")]
     timezone: String,
 
-    #[arg(long = "url1",  env = "URL1")]  url1:  Option<String>,
-    #[arg(long = "url2",  env = "URL2")]  url2:  Option<String>,
-    #[arg(long = "url3",  env = "URL3")]  url3:  Option<String>,
-    #[arg(long = "url4",  env = "URL4")]  url4:  Option<String>,
-    #[arg(long = "url5",  env = "URL5")]  url5:  Option<String>,
-    #[arg(long = "url6",  env = "URL6")]  url6:  Option<String>,
-    #[arg(long = "url7",  env = "URL7")]  url7:  Option<String>,
-    #[arg(long = "url8",  env = "URL8")]  url8:  Option<String>,
-    #[arg(long = "url9",  env = "URL9")]  url9:  Option<String>,
-    #[arg(long = "url10", env = "URL10")] url10: Option<String>,
-    #[arg(long = "url11", env = "URL11")] url11: Option<String>,
-    #[arg(long = "url12", env = "URL12")] url12: Option<String>,
-    #[arg(long = "url13", env = "URL13")] url13: Option<String>,
-    #[arg(long = "url14", env = "URL14")] url14: Option<String>,
-    #[arg(long = "url15", env = "URL15")] url15: Option<String>,
-    #[arg(long = "url16", env = "URL16")] url16: Option<String>,
-    #[arg(long = "url17", env = "URL17")] url17: Option<String>,
-    #[arg(long = "url18", env = "URL18")] url18: Option<String>,
-    #[arg(long = "url19", env = "URL19")] url19: Option<String>,
-    #[arg(long = "url20", env = "URL20")] url20: Option<String>,
+    #[arg(long = "url1", env = "URL1")]
+    url1: Option<String>,
+    #[arg(long = "url2", env = "URL2")]
+    url2: Option<String>,
+    #[arg(long = "url3", env = "URL3")]
+    url3: Option<String>,
+    #[arg(long = "url4", env = "URL4")]
+    url4: Option<String>,
+    #[arg(long = "url5", env = "URL5")]
+    url5: Option<String>,
+    #[arg(long = "url6", env = "URL6")]
+    url6: Option<String>,
+    #[arg(long = "url7", env = "URL7")]
+    url7: Option<String>,
+    #[arg(long = "url8", env = "URL8")]
+    url8: Option<String>,
+    #[arg(long = "url9", env = "URL9")]
+    url9: Option<String>,
+    #[arg(long = "url10", env = "URL10")]
+    url10: Option<String>,
+    #[arg(long = "url11", env = "URL11")]
+    url11: Option<String>,
+    #[arg(long = "url12", env = "URL12")]
+    url12: Option<String>,
+    #[arg(long = "url13", env = "URL13")]
+    url13: Option<String>,
+    #[arg(long = "url14", env = "URL14")]
+    url14: Option<String>,
+    #[arg(long = "url15", env = "URL15")]
+    url15: Option<String>,
+    #[arg(long = "url16", env = "URL16")]
+    url16: Option<String>,
+    #[arg(long = "url17", env = "URL17")]
+    url17: Option<String>,
+    #[arg(long = "url18", env = "URL18")]
+    url18: Option<String>,
+    #[arg(long = "url19", env = "URL19")]
+    url19: Option<String>,
+    #[arg(long = "url20", env = "URL20")]
+    url20: Option<String>,
 }
 
 impl Cli {
     fn collect_urls(&self) -> Vec<String> {
         let opts: &[&Option<String>] = &[
-            &self.url1, &self.url2, &self.url3, &self.url4, &self.url5,
-            &self.url6, &self.url7, &self.url8, &self.url9, &self.url10,
-            &self.url11, &self.url12, &self.url13, &self.url14, &self.url15,
-            &self.url16, &self.url17, &self.url18, &self.url19, &self.url20,
+            &self.url1,
+            &self.url2,
+            &self.url3,
+            &self.url4,
+            &self.url5,
+            &self.url6,
+            &self.url7,
+            &self.url8,
+            &self.url9,
+            &self.url10,
+            &self.url11,
+            &self.url12,
+            &self.url13,
+            &self.url14,
+            &self.url15,
+            &self.url16,
+            &self.url17,
+            &self.url18,
+            &self.url19,
+            &self.url20,
         ];
-        let mut urls: Vec<String> = opts.iter().filter_map(|o| o.as_deref().map(str::to_string)).collect();
+        let mut urls: Vec<String> = opts
+            .iter()
+            .filter_map(|o| o.as_deref().map(str::to_string))
+            .collect();
         urls.push(DEFAULT_SUB_URL.to_string());
         urls
     }
@@ -104,7 +143,10 @@ async fn main() {
 
     // 解析时区
     let tz: Tz = cli.timezone.parse().unwrap_or_else(|_| {
-        eprintln!("[warn] unknown timezone '{}', falling back to Asia/Shanghai", cli.timezone);
+        eprintln!(
+            "[warn] unknown timezone '{}', falling back to Asia/Shanghai",
+            cli.timezone
+        );
         "Asia/Shanghai".parse().unwrap()
     });
 
@@ -125,16 +167,14 @@ async fn main() {
     }
 
     // 检查是否存在上次测速结果
-    let cache_exists =
-        Path::new(CACHE_M3U8).exists() && Path::new(CACHE_TXT).exists();
+    let cache_exists = Path::new(CACHE_M3U8).exists() && Path::new(CACHE_TXT).exists();
 
     // 恢复缓存，让 HTTP 服务立刻可用
     let (m3u8, txt) = read_cache();
 
     // 确定 last_run 初始值
     let last_run_init = if cache_exists {
-        get_file_mtime(CACHE_M3U8)
-            .unwrap_or_else(|| "cached (unknown time)".to_string())
+        get_file_mtime(CACHE_M3U8).unwrap_or_else(|| "cached (unknown time)".to_string())
     } else {
         "Never".to_string()
     };
@@ -205,11 +245,11 @@ async fn main() {
 
     // ── HTTP 路由 ─────────────────────────────────────────────────
     let app = Router::new()
-        .route("/",        get(server::handle_m3u8))
-        .route("/iptv",    get(server::handle_m3u8))
-        .route("/txt",     get(server::handle_txt))
-        .route("/status",  get(server::handle_status))
-        .route("/retest",  get(server::handle_force_retest))
+        .route("/", get(server::handle_m3u8))
+        .route("/iptv", get(server::handle_m3u8))
+        .route("/txt", get(server::handle_txt))
+        .route("/status", get(server::handle_status))
+        .route("/retest", get(server::handle_force_retest))
         .with_state(state);
 
     let addr = format!("0.0.0.0:{}", cli.port);

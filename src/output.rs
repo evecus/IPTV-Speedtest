@@ -19,7 +19,10 @@ static TIER_GROUPS: &[(&str, &str, &str)] = &[
 ];
 
 /// 聚合所有条目、去重、排序，写入文件，返回 (m3u8, txt)
-pub fn build_and_write(all_entries: Vec<Entry>, update_time: chrono::DateTime<chrono::Local>) -> (String, String) {
+pub fn build_and_write(
+    all_entries: Vec<Entry>,
+    update_time: chrono::DateTime<chrono::Local>,
+) -> (String, String) {
     // ── 按频道名分组 ─────────────────────────────────────────────
     let mut by_name: HashMap<String, Vec<Entry>> = HashMap::new();
     for e in all_entries {

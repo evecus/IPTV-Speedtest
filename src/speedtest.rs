@@ -68,9 +68,7 @@ async fn measure_speed(stream_url: &str, deadline: Instant) -> f64 {
             }
             _ => break,
         }
-        if size > 10 * 1024 * 1024
-            || start.elapsed() > SPEED_TEST_SECS
-            || Instant::now() > deadline
+        if size > 10 * 1024 * 1024 || start.elapsed() > SPEED_TEST_SECS || Instant::now() > deadline
         {
             break;
         }
@@ -376,11 +374,7 @@ pub fn print_progress(completed: usize, total: usize, success: usize) {
     let bw = 30;
     let ratio = completed as f64 / total as f64;
     let filled = (bw as f64 * ratio) as usize;
-    let bar = format!(
-        "{}{}",
-        "=".repeat(filled),
-        "-".repeat(bw - filled)
-    );
+    let bar = format!("{}{}", "=".repeat(filled), "-".repeat(bw - filled));
     print!(
         "\r测速进度 [{}] {}/{} ({:5.1}%) 有效源: {}",
         bar,

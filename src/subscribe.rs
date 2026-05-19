@@ -112,7 +112,11 @@ fn parse_txt_channels(content: &str) -> Vec<Channel> {
 pub fn host_key(raw_url: &str) -> String {
     if let Ok(u) = Url::parse(raw_url) {
         if !u.host_str().unwrap_or("").is_empty() {
-            let scheme = if u.scheme().is_empty() { "http" } else { u.scheme() };
+            let scheme = if u.scheme().is_empty() {
+                "http"
+            } else {
+                u.scheme()
+            };
             return format!("{}://{}", scheme, u.host_str().unwrap_or(""));
         }
     }

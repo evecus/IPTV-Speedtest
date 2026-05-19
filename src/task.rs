@@ -22,7 +22,12 @@ pub fn is_running() -> bool {
 }
 
 /// 主调度任务
-pub async fn run_task(state: std::sync::Arc<AppState>, workers: usize, top_n: usize, urls: Vec<String>) {
+pub async fn run_task(
+    state: std::sync::Arc<AppState>,
+    workers: usize,
+    top_n: usize,
+    urls: Vec<String>,
+) {
     if IS_RUNNING
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
@@ -63,9 +68,7 @@ pub async fn run_task(state: std::sync::Arc<AppState>, workers: usize, top_n: us
                 "txiptv" | "zhgxtv" | "jsmpeg" => {
                     build_entries(&src.channels, source_idx, src.speed, &std_map)
                 }
-                "hsmdtv" => {
-                    process_hsmdtv_channels(&src.host, source_idx, src.speed, &std_map)
-                }
+                "hsmdtv" => process_hsmdtv_channels(&src.host, source_idx, src.speed, &std_map),
                 _ => vec![],
             };
             all_entries.extend(entries);
@@ -94,11 +97,7 @@ pub async fn run_task(state: std::sync::Arc<AppState>, workers: usize, top_n: us
                 Some(&s) if s >= SPEED_LOW => s,
                 _ => continue,
             };
-            let name = map_to_standard_name(
-                &clean_channel_name(&ch.name),
-                &std_map,
-            )
-            .to_string();
+            let name = map_to_standard_name(&clean_channel_name(&ch.name), &std_map).to_string();
             all_entries.push(Entry {
                 content: build_m3u8_entry(&name, &ch.url, spd),
                 name,
@@ -108,11 +107,7 @@ pub async fn run_task(state: std::sync::Arc<AppState>, workers: usize, top_n: us
             });
             added += 1;
         }
-        println!(
-            "[subscribe] kept {} / {} channels",
-            added,
-            channels.len()
-        );
+        println!("[subscribe] kept {} / {} channels", added, channels.len());
         source_idx += 1;
     }
 
@@ -134,10 +129,7 @@ pub async fn run_task(state: std::sync::Arc<AppState>, workers: usize, top_n: us
     }
 
     IS_RUNNING.store(false, Ordering::Release);
-    println!(
-        "[task] done — elapsed {}s",
-        start.elapsed().as_secs()
-    );
+    println!("[task] done — elapsed {}s", start.elapsed().as_secs());
 }
 
 // ── 内部辅助 ──────────────────────────────────────────────────────
@@ -170,7 +162,11 @@ async fn fetch_api_data() -> Vec<serde_json::Map<String, Value>> {
 }
 
 fn select_top_sources(mut results: Vec<SourceResult>, top_n: usize) -> Vec<SourceResult> {
-    results.sort_by(|a, b| b.speed.partial_cmp(&a.speed).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.speed
+            .partial_cmp(&a.speed)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let mut selected_hosts = std::collections::HashSet::new();
     let mut final_results: Vec<SourceResult> = vec![];
 
@@ -194,7 +190,11 @@ fn select_top_sources(mut results: Vec<SourceResult>, top_n: usize) -> Vec<Sourc
             final_results.push(r.clone());
         }
     }
-    final_results.sort_by(|a, b| b.speed.partial_cmp(&a.speed).unwrap_or(std::cmp::Ordering::Equal));
+    final_results.sort_by(|a, b| {
+        b.speed
+            .partial_cmp(&a.speed)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     final_results
 }
 
@@ -238,7 +238,9 @@ fn process_hsmdtv_channels(
         if line.is_empty() {
             continue;
         }
-        let Some(loc) = RE_URL.find(line) else { continue };
+        let Some(loc) = RE_URL.find(line) else {
+            continue;
+        };
         let url_in_file = loc.as_str();
         let before = &line[..loc.start()];
         let name_raw = RE_ID
@@ -247,7 +249,9 @@ fn process_hsmdtv_channels(
             .trim()
             .to_string();
         let name = map_to_standard_name(&clean_channel_name(&name_raw), std_map).to_string();
-        let Ok(p) = Url::parse(url_in_file) else { continue };
+        let Ok(p) = Url::parse(url_in_file) else {
+            continue;
+        };
         let new_url = format!("http://{}{}", host, p.path());
         entries.push(Entry {
             content: build_m3u8_entry(&name, &new_url, speed),

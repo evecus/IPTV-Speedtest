@@ -122,9 +122,7 @@ pub fn clean_channel_name(name: &str) -> String {
     s = s.replace("PLUS", "+");
     s = s.replace('＋', "+");
     s = RE_CCTV_NUM
-        .replace_all(&s, |caps: &regex::Captures| {
-            format!("CCTV{}", &caps[1])
-        })
+        .replace_all(&s, |caps: &regex::Captures| format!("CCTV{}", &caps[1]))
         .into_owned();
     if let Some(&mapped) = CCTV_ALIASES.get(s.as_str()) {
         return mapped.to_string();
@@ -160,17 +158,43 @@ pub fn map_to_standard_name<'a>(name: &'a str, m: &'a HashMap<String, String>) -
 // ── 卫视排序 ──────────────────────────────────────────────────────
 
 static WEIXI_ORDER: &[&str] = &[
-    "湖南卫视", "东方卫视", "浙江卫视", "江苏卫视", "北京卫视", "山东卫视", "河南卫视",
-    "广东卫视", "安徽卫视", "深圳卫视", "天津卫视", "江西卫视", "四川卫视", "湖北卫视",
-    "重庆卫视", "黑龙江卫视", "辽宁卫视", "河北卫视", "吉林卫视", "山西卫视", "广西卫视",
-    "云南卫视", "福建东南卫视", "贵州卫视", "陕西卫视", "甘肃卫视", "内蒙古卫视", "新疆卫视",
-    "宁夏卫视", "青海卫视", "西藏卫视", "海南卫视", "兵团卫视",
+    "湖南卫视",
+    "东方卫视",
+    "浙江卫视",
+    "江苏卫视",
+    "北京卫视",
+    "山东卫视",
+    "河南卫视",
+    "广东卫视",
+    "安徽卫视",
+    "深圳卫视",
+    "天津卫视",
+    "江西卫视",
+    "四川卫视",
+    "湖北卫视",
+    "重庆卫视",
+    "黑龙江卫视",
+    "辽宁卫视",
+    "河北卫视",
+    "吉林卫视",
+    "山西卫视",
+    "广西卫视",
+    "云南卫视",
+    "福建东南卫视",
+    "贵州卫视",
+    "陕西卫视",
+    "甘肃卫视",
+    "内蒙古卫视",
+    "新疆卫视",
+    "宁夏卫视",
+    "青海卫视",
+    "西藏卫视",
+    "海南卫视",
+    "兵团卫视",
 ];
 
 pub fn weixi_sort_index(name: &str) -> Option<usize> {
-    WEIXI_ORDER
-        .iter()
-        .position(|&kw| name.contains(kw))
+    WEIXI_ORDER.iter().position(|&kw| name.contains(kw))
 }
 
 // 返回 (category, sub_order, name) 用于排序
