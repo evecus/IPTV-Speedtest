@@ -53,12 +53,10 @@ pub fn build_m3u8_entry(name: &str, stream_url: &str, speed: f64) -> String {
 // ── 频道名清洗 ────────────────────────────────────────────────────
 
 // 匹配 CCTV + 数字（含可选的+号），提取标准名
-static RE_CCTV_EXTRACT: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)CCTV(\d+)(\+)?").unwrap());
+static RE_CCTV_EXTRACT: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)CCTV(\d+)(\+)?").unwrap());
 
 // 匹配 XX卫视，XX必须是汉字（至少1个）
-static RE_WEIXI_EXTRACT: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"([\u4e00-\u9fff]+卫视)").unwrap());
+static RE_WEIXI_EXTRACT: Lazy<Regex> = Lazy::new(|| Regex::new(r"([\u4e00-\u9fff]+卫视)").unwrap());
 
 static RE_CCTV_NUM: Lazy<Regex> = Lazy::new(|| Regex::new(r"CCTV(\d+)台").unwrap());
 
