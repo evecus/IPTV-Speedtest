@@ -1,44 +1,34 @@
-use crate::config::{LOGO_BASE_URL, SPEED_HIGH, SPEED_MID};
+use crate::config::LOGO_BASE_URL;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 
-// ── 速度分级 ──────────────────────────────────────────────────────
+// ── 速度分级（保留供兼容，但输出不再使用分级分组）────────────────
 
-pub fn speed_tier(speed: f64) -> &'static str {
-    if speed >= SPEED_HIGH {
-        "高速"
-    } else if speed >= SPEED_MID {
-        "普通"
-    } else {
-        "低速"
-    }
+pub fn speed_tier(_speed: f64) -> &'static str {
+    ""
 }
 
-pub fn tier_order(tier: &str) -> i32 {
-    match tier {
-        "高速" => 0,
-        "普通" => 1,
-        _ => 2,
-    }
+pub fn tier_order(_tier: &str) -> i32 {
+    0
 }
 
-// ── 分组 / Logo ───────────────────────────────────────────────────
+// ── 分组 ──────────────────────────────────────────────────────────
 
 pub fn base_group(name: &str) -> &'static str {
     let upper = name.to_uppercase();
     if upper.contains("CCTV") {
-        "央视"
+        "央视频道"
     } else if name.contains("卫视") {
-        "卫视"
+        "卫视频道"
     } else {
-        "其他"
+        "其他频道"
     }
 }
 
-pub fn full_group(name: &str, speed: f64) -> String {
-    format!("{}（{}）", base_group(name), speed_tier(speed))
+pub fn full_group(name: &str, _speed: f64) -> String {
+    base_group(name).to_string()
 }
 
 pub fn build_logo_url(name: &str) -> String {
@@ -62,57 +52,19 @@ pub fn build_m3u8_entry(name: &str, stream_url: &str, speed: f64) -> String {
 
 // ── 频道名清洗 ────────────────────────────────────────────────────
 
-static RE_CCTV_NUM: Lazy<Regex> = Lazy::new(|| Regex::new(r"CCTV(\d+)台").unwrap());
+// 匹配 CCTV + 数字（含可选的+号），提取标准名
+static RE_CCTV_EXTRACT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)CCTV(\d+)(\+)?").unwrap());
 
-static CCTV_ALIASES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
-    let mut m = HashMap::new();
-    let pairs: &[(&str, &str)] = &[
-        ("CCTV1综合", "CCTV1"),
-        ("CCTV2财经", "CCTV2"),
-        ("CCTV3综艺", "CCTV3"),
-        ("CCTV4国际", "CCTV4"),
-        ("CCTV4中文国际", "CCTV4"),
-        ("CCTV4欧洲", "CCTV4"),
-        ("CCTV5体育", "CCTV5"),
-        ("CCTV6电影", "CCTV6"),
-        ("CCTV7军事", "CCTV7"),
-        ("CCTV7军农", "CCTV7"),
-        ("CCTV7农业", "CCTV7"),
-        ("CCTV7国防军事", "CCTV7"),
-        ("CCTV8电视剧", "CCTV8"),
-        ("CCTV9记录", "CCTV9"),
-        ("CCTV9纪录", "CCTV9"),
-        ("CCTV10科教", "CCTV10"),
-        ("CCTV11戏曲", "CCTV11"),
-        ("CCTV12社会与法", "CCTV12"),
-        ("CCTV13新闻", "CCTV13"),
-        ("CCTV新闻", "CCTV13"),
-        ("CCTV14少儿", "CCTV14"),
-        ("CCTV15音乐", "CCTV15"),
-        ("CCTV16奥林匹克", "CCTV16"),
-        ("CCTV17农业农村", "CCTV17"),
-        ("CCTV17农业", "CCTV17"),
-        ("CCTV5+体育赛视", "CCTV5+"),
-        ("CCTV5+体育赛事", "CCTV5+"),
-        ("CCTV5+体育", "CCTV5+"),
-        ("CCTV01", "CCTV1"),
-        ("CCTV02", "CCTV2"),
-        ("CCTV03", "CCTV3"),
-        ("CCTV04", "CCTV4"),
-        ("CCTV05", "CCTV5"),
-        ("CCTV06", "CCTV6"),
-        ("CCTV07", "CCTV7"),
-        ("CCTV08", "CCTV8"),
-        ("CCTV09", "CCTV9"),
-    ];
-    for (k, v) in pairs {
-        m.insert(*k, *v);
-    }
-    m
-});
+// 匹配 XX卫视，XX必须是汉字（至少1个）
+static RE_WEIXI_EXTRACT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"([\u4e00-\u9fff]+卫视)").unwrap());
+
+static RE_CCTV_NUM: Lazy<Regex> = Lazy::new(|| Regex::new(r"CCTV(\d+)台").unwrap());
 
 pub fn clean_channel_name(name: &str) -> String {
     let mut s = name.to_string();
+    // 先做基础替换
     s = s.replace("cctv", "CCTV");
     s = s.replace("中央", "CCTV");
     s = s.replace("央视", "CCTV");
@@ -124,9 +76,19 @@ pub fn clean_channel_name(name: &str) -> String {
     s = RE_CCTV_NUM
         .replace_all(&s, |caps: &regex::Captures| format!("CCTV{}", &caps[1]))
         .into_owned();
-    if let Some(&mapped) = CCTV_ALIASES.get(s.as_str()) {
-        return mapped.to_string();
+
+    // 若包含 CCTV+数字，直接提取为标准名 CCTVn 或 CCTVn+
+    if let Some(caps) = RE_CCTV_EXTRACT.captures(&s) {
+        let num = &caps[1];
+        let plus = caps.get(2).map(|_| "+").unwrap_or("");
+        return format!("CCTV{}{}", num, plus);
     }
+
+    // 若包含 XX卫视（XX为汉字），提取为标准名
+    if let Some(caps) = RE_WEIXI_EXTRACT.captures(&s) {
+        return caps[1].to_string();
+    }
+
     s
 }
 

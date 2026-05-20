@@ -1,22 +1,11 @@
-use crate::channel::{base_group, build_m3u8_entry, channel_sort_key, speed_tier, tier_order};
+use crate::channel::{base_group, channel_sort_key};
 use crate::config::{CACHE_M3U8, CACHE_TXT, EPG_URL};
 use crate::types::Entry;
-use chrono::NaiveDateTime;
 use std::collections::HashMap;
 use std::fs;
 
-/// 所有速度分级分组（固定顺序）
-static TIER_GROUPS: &[(&str, &str, &str)] = &[
-    ("央视", "高速", "央视（高速）"),
-    ("央视", "普通", "央视（普通）"),
-    ("央视", "低速", "央视（低速）"),
-    ("卫视", "高速", "卫视（高速）"),
-    ("卫视", "普通", "卫视（普通）"),
-    ("卫视", "低速", "卫视（低速）"),
-    ("其他", "高速", "其他（高速）"),
-    ("其他", "普通", "其他（普通）"),
-    ("其他", "低速", "其他（低速）"),
-];
+/// 四个固定分组（固定顺序）
+static GROUPS: &[&str] = &["央视频道", "卫视频道", "其他频道"];
 
 /// 聚合所有条目、去重、排序，写入文件，返回 (m3u8, txt)
 pub fn build_and_write(
@@ -29,7 +18,7 @@ pub fn build_and_write(
         by_name.entry(e.name.clone()).or_default().push(e);
     }
 
-    // ── 排序频道名 ───────────────────────────────────────────────
+    // ── 排序频道名（按分类+子序号）─────────────────────────────
     let mut all_names: Vec<String> = by_name.keys().cloned().collect();
     all_names.sort_by(|a, b| {
         let (a0, a1, a2) = channel_sort_key(a);
@@ -39,14 +28,16 @@ pub fn build_and_write(
             .then(a2.cmp(&b2))
     });
 
-    // ── 每个频道去重并按分级+索引排序 ───────────────────────────
+    // ── 每个频道去重并按速度从快到慢排序 ────────────────────────
     for entries in by_name.values_mut() {
         let mut seen = std::collections::HashSet::new();
         entries.retain(|e| seen.insert(e.url.clone()));
+        // 按速度降序，速度相同则按 index 升序
         entries.sort_by(|a, b| {
-            let ta = tier_order(speed_tier(a.speed));
-            let tb = tier_order(speed_tier(b.speed));
-            ta.cmp(&tb).then(a.index.cmp(&b.index))
+            b.speed
+                .partial_cmp(&a.speed)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.index.cmp(&b.index))
         });
     }
 
@@ -59,10 +50,16 @@ pub fn build_and_write(
         format!("#EXTM3U x-tvg-url=\"{}\"", EPG_URL),
         format!("#EXT-X-UPDATED: {}", ts),
     ];
-    for name in &all_names {
-        if let Some(entries) = by_name.get(name) {
-            for e in entries {
-                m3u8_lines.push(e.content.clone());
+    // 按分组顺序输出
+    for grp in GROUPS {
+        for name in &all_names {
+            if base_group(name) != *grp {
+                continue;
+            }
+            if let Some(entries) = by_name.get(name) {
+                for e in entries {
+                    m3u8_lines.push(e.content.clone());
+                }
             }
         }
     }
@@ -74,25 +71,26 @@ pub fn build_and_write(
     let _ = fs::write(CACHE_M3U8, &m3u8);
 
     // ── TXT ──────────────────────────────────────────────────────
-    let mut group_lines: HashMap<String, Vec<String>> = HashMap::new();
+    let mut group_lines: HashMap<&str, Vec<String>> = HashMap::new();
     for name in &all_names {
+        let grp = base_group(name);
         if let Some(entries) = by_name.get(name) {
             for e in entries {
-                let label = format!("{}（{}）", base_group(&e.name), speed_tier(e.speed));
                 group_lines
-                    .entry(label)
+                    .entry(grp)
                     .or_default()
                     .push(format!("{},{}", e.name, e.url));
             }
         }
     }
+
     let mut txt_parts: Vec<String> = vec![];
-    for (_, _, label) in TIER_GROUPS {
-        let lines = group_lines.get(*label).cloned().unwrap_or_default();
+    for grp in GROUPS {
+        let lines = group_lines.get(*grp).cloned().unwrap_or_default();
         if lines.is_empty() {
             continue;
         }
-        txt_parts.push(format!("{},#genre#", label));
+        txt_parts.push(format!("{},#genre#", grp));
         txt_parts.extend(lines);
         txt_parts.push(String::new());
     }
