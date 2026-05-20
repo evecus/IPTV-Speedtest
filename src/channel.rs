@@ -52,17 +52,18 @@ pub fn build_m3u8_entry(name: &str, stream_url: &str, speed: f64) -> String {
 
 // ── 频道名清洗 ────────────────────────────────────────────────────
 
-// 匹配 CCTV + 数字（含可选的+号），提取标准名
-static RE_CCTV_EXTRACT: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)CCTV(\d+)(\+)?").unwrap());
+// 匹配 CCTV + 1~2位数字（含可选的+号），数字后紧跟的多余字符会被忽略
+static RE_CCTV_EXTRACT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)CCTV(\d{1,2})(\+)?").unwrap());
 
-// 匹配 XX卫视，XX必须是汉字（至少1个）
-static RE_WEIXI_EXTRACT: Lazy<Regex> = Lazy::new(|| Regex::new(r"([\u4e00-\u9fff]+卫视)").unwrap());
+// 匹配 XX卫视，XX必须是汉字（至少1个），前后内容全部丢弃
+static RE_WEIXI_EXTRACT: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"([\u4e00-\u9fff]+卫视)").unwrap());
 
 static RE_CCTV_NUM: Lazy<Regex> = Lazy::new(|| Regex::new(r"CCTV(\d+)台").unwrap());
 
 pub fn clean_channel_name(name: &str) -> String {
     let mut s = name.to_string();
-    // 先做基础替换
     s = s.replace("cctv", "CCTV");
     s = s.replace("中央", "CCTV");
     s = s.replace("央视", "CCTV");
@@ -75,16 +76,28 @@ pub fn clean_channel_name(name: &str) -> String {
         .replace_all(&s, |caps: &regex::Captures| format!("CCTV{}", &caps[1]))
         .into_owned();
 
-    // 若包含 CCTV+数字，直接提取为标准名 CCTVn 或 CCTVn+
+    // 若包含 CCTV+数字：提取数字，校验范围 1~17（含5+），范围外归其他频道
     if let Some(caps) = RE_CCTV_EXTRACT.captures(&s) {
-        let num = &caps[1];
-        let plus = caps.get(2).map(|_| "+").unwrap_or("");
-        return format!("CCTV{}{}", num, plus);
+        let num: u32 = caps[1].parse().unwrap_or(0);
+        let is_plus = caps.get(2).is_some();
+        if is_plus && num == 5 {
+            return "CCTV5+".to_string();
+        }
+        if num >= 1 && num <= 17 {
+            return format!("CCTV{}", num);
+        }
+        // 数字超出范围（CCTV18等）→ 去掉CCTV前缀，归其他频道
+        return s.replace("CCTV", "");
     }
 
-    // 若包含 XX卫视（XX为汉字），提取为标准名
+    // 若包含 XX卫视（XX为汉字），提取为标准名，前后数字/符号全部丢弃
     if let Some(caps) = RE_WEIXI_EXTRACT.captures(&s) {
         return caps[1].to_string();
+    }
+
+    // 若还含有 CCTV 但没有合法编号（如CCTV气象），去掉CCTV归其他频道
+    if s.to_uppercase().contains("CCTV") {
+        return s.replace("CCTV", "").replace("cctv", "");
     }
 
     s
