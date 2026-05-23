@@ -27,3 +27,9 @@ chrono-tz = "0.9"
 cron = "0.12"
 anyhow = "1"
 futures-util = "0.3"
+
+[profile.release]
+strip         = "symbols"  # 剥离调试符号表，不影响运行
+debug         = false      # 不内嵌调试信息
+lto           = "thin"     # 跨 crate 裁掉未调用的代码，thin 构建速度可接受
+codegen-units = 1          # 单编译单元，允许更完整的内联分析
