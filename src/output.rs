@@ -1,5 +1,5 @@
 use crate::channel::{base_group, channel_sort_key};
-use crate::config::{CACHE_M3U8, CACHE_TXT, EPG_URL};
+use crate::config::{data_path, CACHE_M3U8, CACHE_TXT, EPG_URL};
 use crate::types::Entry;
 use std::collections::HashMap;
 use std::fs;
@@ -68,7 +68,7 @@ pub fn build_and_write(
         dummy_name, DUMMY_URL
     ));
     let m3u8 = m3u8_lines.join("\n");
-    let _ = fs::write(CACHE_M3U8, &m3u8);
+    let _ = fs::write(data_path(CACHE_M3U8), &m3u8);
 
     // ── TXT ──────────────────────────────────────────────────────
     let mut group_lines: HashMap<&str, Vec<String>> = HashMap::new();
@@ -97,7 +97,7 @@ pub fn build_and_write(
     txt_parts.push("更新时间,#genre#".to_string());
     txt_parts.push(format!("{},{}", dummy_name, DUMMY_URL));
     let txt = txt_parts.join("\n");
-    let _ = fs::write(CACHE_TXT, &txt);
+    let _ = fs::write(data_path(CACHE_TXT), &txt);
 
     println!(
         "[output] m3u8 {} bytes  txt {} bytes  channels {}",
@@ -110,7 +110,7 @@ pub fn build_and_write(
 
 /// 读取缓存文件
 pub fn read_cache() -> (String, String) {
-    let m3u8 = fs::read_to_string(CACHE_M3U8).unwrap_or_default();
-    let txt = fs::read_to_string(CACHE_TXT).unwrap_or_default();
+    let m3u8 = fs::read_to_string(data_path(CACHE_M3U8)).unwrap_or_default();
+    let txt = fs::read_to_string(data_path(CACHE_TXT)).unwrap_or_default();
     (m3u8, txt)
 }
