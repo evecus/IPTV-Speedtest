@@ -7,13 +7,13 @@ mod subscribe;
 mod task;
 mod types;
 
-use crate::config::{CACHE_M3U8, CACHE_TXT, DEFAULT_SUB_URL, VERSION};
+use crate::config::{data_path, init_data_dir, CACHE_M3U8, CACHE_TXT, DEFAULT_SUB_URL, VERSION};
 use crate::output::read_cache;
 use axum::{routing::get, Router};
 use chrono_tz::Tz;
 use clap::Parser;
 use cron::Schedule;
-use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -42,6 +42,10 @@ struct Cli {
     /// 时区，例如 Asia/Shanghai、UTC、America/New_York
     #[arg(long, env = "TZ", default_value = "Asia/Shanghai")]
     timezone: String,
+
+    /// 结果文件存放目录（不指定则使用当前工作目录）
+    #[arg(long, env = "DATA_DIR")]
+    dir: Option<PathBuf>,
 
     #[arg(long = "url1", env = "URL1")]
     url1: Option<String>,
@@ -139,6 +143,11 @@ pub struct AppState {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
+    // ── 初始化数据目录（必须最先做）────────────────────────────
+    init_data_dir(cli.dir.as_deref());
+    println!("[main] data dir: {}", config::data_dir().display());
+
     let urls = cli.collect_urls();
 
     // 解析时区
@@ -167,14 +176,17 @@ async fn main() {
     }
 
     // 检查是否存在上次测速结果
-    let cache_exists = Path::new(CACHE_M3U8).exists() && Path::new(CACHE_TXT).exists();
+    let cache_m3u8 = data_path(CACHE_M3U8);
+    let cache_txt = data_path(CACHE_TXT);
+    let cache_exists = cache_m3u8.exists() && cache_txt.exists();
 
     // 恢复缓存，让 HTTP 服务立刻可用
     let (m3u8, txt) = read_cache();
 
     // 确定 last_run 初始值
     let last_run_init = if cache_exists {
-        get_file_mtime(CACHE_M3U8).unwrap_or_else(|| "cached (unknown time)".to_string())
+        get_file_mtime(&cache_m3u8.to_string_lossy())
+            .unwrap_or_else(|| "cached (unknown time)".to_string())
     } else {
         "Never".to_string()
     };
@@ -193,7 +205,8 @@ async fn main() {
     if cache_exists {
         println!(
             "[main] cache files found ({} + {}), skipping startup speed-test — waiting for cron.",
-            CACHE_M3U8, CACHE_TXT
+            cache_m3u8.display(),
+            cache_txt.display()
         );
     } else {
         println!("[main] no cache found, running initial speed-test immediately.");
